@@ -193,8 +193,8 @@ class DatabaseBenchmarkTest {
     fun executeSemiJoinQuery(stmt: Statement) {
         val query = """
         SELECT *
-        FROM users u
-        SEMI JOIN orders o ON u.user_id = o.user_id
+        FROM orders o
+        SEMI JOIN users u ON u.user_id = o.user_id
     """
 
         val rs = stmt.executeQuery(query)
