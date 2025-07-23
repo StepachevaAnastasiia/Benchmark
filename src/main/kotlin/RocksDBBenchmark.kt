@@ -14,11 +14,14 @@ import kotlinx.benchmark.*
 @State(Scope.Thread)
 class RocksDBBenchmark {
     companion object {
-        val numberOfRecords = 100000
-        val chunk = 10000
+        val numberOfRecords = 1_000_000
+        val chunk = 100_000
         val usersDBPath = "/tmp/rocksdb_users"
         val ordersDBPath = "/tmp/rocksdb_orders"
     }
+
+    @Param("1", "2", "100000")
+    var stepParam: Int = 0
 
     @TearDown
     fun cleanup() {
@@ -46,7 +49,7 @@ class RocksDBBenchmark {
         val usersBatch = WriteBatch()
         for (i in 1..numberOfRecords / chunk) {
 
-            for (j in 1..chunk) {
+            for (j in 1..chunk step stepParam) {
                 val userId = (i - 1) * chunk + j
                 val username = "user_$userId"
                 val email = "user_$userId@example.com"

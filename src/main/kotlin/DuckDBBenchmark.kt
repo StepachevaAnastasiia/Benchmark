@@ -14,9 +14,12 @@ import kotlinx.benchmark.*
 @State(Scope.Thread)
 class DuckDBBenchmark {
     companion object {
-        val numberOfRecords = 100000
-        val chunk = 10000
+        val numberOfRecords = 1_000_000
+        val chunk = 10_000
     }
+
+    @Param("1", "2", "1000000")
+    var stepParam: Int = 0
 
     @Benchmark
     fun duckDBTest(bh: Blackhole) {
@@ -38,7 +41,6 @@ class DuckDBBenchmark {
     """
 
             val rs = stmt.executeQuery(query)
-            val meta = rs.metaData
 
             while (rs.next()) {
                 bh.consume(rs.getObject(1))
@@ -77,7 +79,7 @@ class DuckDBBenchmark {
     fun insertData(conn: DuckDBConnection) {
 
         val usersAppender = conn.createAppender(DuckDBConnection.DEFAULT_SCHEMA, "users")
-        for (i in 1..numberOfRecords) {
+        for (i in 1..numberOfRecords step stepParam) {
             usersAppender.beginRow()
             usersAppender.append(i)
             usersAppender.append("user$i")
