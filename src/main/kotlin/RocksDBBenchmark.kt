@@ -10,7 +10,7 @@ import kotlinx.benchmark.*
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(BenchmarkTimeUnit.SECONDS)
 @Warmup(iterations = 2)
-@Measurement(iterations = 5)
+@Measurement(iterations = 15)
 @State(Scope.Thread)
 class RocksDBBenchmark {
     companion object {
@@ -20,8 +20,8 @@ class RocksDBBenchmark {
         val ordersDBPath = "/tmp/rocksdb_orders"
     }
 
-    @Param("1", "2", "100000")
-    var stepParam: Int = 0
+    @Param("1.0", "0.5", "0.0")
+    var selectivity: Double = 1.0
 
     @TearDown
     fun cleanup() {
@@ -45,30 +45,37 @@ class RocksDBBenchmark {
             setSync(false)
             setDisableWAL(true)
         }
+
         val usersDB = RocksDB.open(rocksDbOptions, usersDBPath)
         val usersBatch = WriteBatch()
-        for (i in 1..numberOfRecords / chunk) {
+        val userIds = (1..numberOfRecords).toList()
+        for (userId in userIds) {
+            val userData = "$userId|user_$userId|user_$userId@example.com"
+            usersBatch.put(userId.toString().toByteArray(), userData.toByteArray())
 
-            for (j in 1..chunk step stepParam) {
-                val userId = (i - 1) * chunk + j
-                val username = "user_$userId"
-                val email = "user_$userId@example.com"
-
-                val userData = "$userId|$username|$email"
-
-                usersBatch.put(userId.toString().toByteArray(), userData.toByteArray())
+            if (userId % chunk == 0) {
+                usersDB.write(batchOptions, usersBatch)
+                usersBatch.clear()
             }
-
-            usersDB.write(batchOptions, usersBatch)
         }
         usersBatch.close()
 
-        val ordersBatch = WriteBatch()
         val ordersDB = RocksDB.open(rocksDbOptions, ordersDBPath)
+
+        val numMatchingOrders = (numberOfRecords * selectivity).toInt()
+        val numNonMatchingOrders = numberOfRecords - numMatchingOrders
+
+        val selectiveUserIds = userIds.shuffled().take(numMatchingOrders)
+        val nonExistingUserIds = (1..numNonMatchingOrders).map { Int.MAX_VALUE - it }
+
+        val allUserIdsForOrders = selectiveUserIds + nonExistingUserIds
+        val shuffledUserIds = allUserIdsForOrders.shuffled()
+
         for (i in 1..numberOfRecords / chunk) {
+            val ordersBatch = WriteBatch()
 
             val orders = (1..chunk).map { n ->
-                val id = (i - 1) * chunk + n
+                val id = shuffledUserIds[(i - 1) * chunk + n - 1]
                 val timestamp = LocalDateTime.now()
                 val amount = Random.nextDouble(10.0, 500000.0)
                 val orderData = "$id|$id|$timestamp|$amount"
@@ -89,24 +96,25 @@ class RocksDBBenchmark {
             }
 
             ordersDB.write(batchOptions, ordersBatch)
+            ordersBatch.close()
         }
 
         ordersDB.newIterator().use { rdbEntries ->
             rdbEntries.seekToFirst()
 
-            do {
+            while (rdbEntries.isValid) {
                 val entry = rdbEntries.value()
                 val record = String(entry)
 
                 bh.consume(record)
-
                 rdbEntries.next()
-            } while (rdbEntries.isValid)
+            }
         }
-        ordersBatch.close()
+
+        rocksDbOptions.close()
+        batchOptions.close()
         usersDB.close()
         ordersDB.close()
-
     }
 
     fun deleteDirectory(pathStr: String) {

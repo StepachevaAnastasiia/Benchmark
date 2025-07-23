@@ -10,7 +10,7 @@ import kotlinx.benchmark.*
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(BenchmarkTimeUnit.SECONDS)
 @Warmup(iterations = 2)
-@Measurement(iterations = 5)
+@Measurement(iterations = 15)
 @State(Scope.Thread)
 class DuckDBBenchmark {
     companion object {
@@ -18,8 +18,8 @@ class DuckDBBenchmark {
         val chunk = 10_000
     }
 
-    @Param("1", "2", "1000000")
-    var stepParam: Int = 0
+    @Param("1.0", "0.5", "0.0")
+    var selectivity: Double = 1.0
 
     @Benchmark
     fun duckDBTest(bh: Blackhole) {
@@ -79,26 +79,37 @@ class DuckDBBenchmark {
     fun insertData(conn: DuckDBConnection) {
 
         val usersAppender = conn.createAppender(DuckDBConnection.DEFAULT_SCHEMA, "users")
-        for (i in 1..numberOfRecords step stepParam) {
+
+        val userIds = (1..numberOfRecords).toList()
+        for (userId in userIds) {
             usersAppender.beginRow()
-            usersAppender.append(i)
-            usersAppender.append("user$i")
-            usersAppender.append("user$i@example.com")
+            usersAppender.append(userId)
+            usersAppender.append("user$userId")
+            usersAppender.append("user$userId@example.com")
             usersAppender.endRow()
 
-            if (i % chunk == 0) {
+            if (userId % chunk == 0) {
                 usersAppender.flush()
             }
-        }
 
-        usersAppender.flush()
+        }
         usersAppender.close()
 
+        val numMatchingOrders = (numberOfRecords * selectivity).toInt()
+        val numNonMatchingOrders = numberOfRecords - numMatchingOrders
+
+        val selectiveUserIds = userIds.shuffled().take(numMatchingOrders)
+        val nonExistingUserIds = (1..numNonMatchingOrders).map { Int.MAX_VALUE - it }
+        val allUserIdsForOrders = selectiveUserIds + nonExistingUserIds
+        val shuffledUserIds = allUserIdsForOrders.shuffled()
+
         val ordersAppender = conn.createAppender(DuckDBConnection.DEFAULT_SCHEMA, "orders")
+
+
         for (i in 1..numberOfRecords) {
             ordersAppender.beginRow()
             ordersAppender.append(i)
-            ordersAppender.append(i)
+            ordersAppender.append(shuffledUserIds[i - 1])
             ordersAppender.appendLocalDateTime(LocalDateTime.now())
             ordersAppender.append(Random.nextDouble(10.0, 500000.0))
             ordersAppender.endRow()

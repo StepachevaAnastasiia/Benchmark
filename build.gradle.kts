@@ -33,7 +33,7 @@ benchmark {
     configurations {
         named("main") {
             warmups = 2
-            iterations = 5
+            iterations = 15
             mode = "avgt"
             outputTimeUnit = "s"
         }
@@ -47,5 +47,5 @@ benchmark {
 }
 
 tasks.withType<JavaExec> {
-    jvmArgs = listOf("-Xmx2G", "-XX:MaxMetaspaceSize=1G")
+    jvmArgs = listOf("-Xmx1G", "-XX:MaxMetaspaceSize=1G")
 }
